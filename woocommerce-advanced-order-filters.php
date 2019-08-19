@@ -61,9 +61,10 @@ class WC_Advanced_Order_Filters {
 			$this->filterableAttribute = 'pa_popup-store';
 
 			// adds the additional filtering dropdowns to the orders page
-			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_coupon_used' ) );
-			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_shipping_method_used' ) );
-			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_attribute' ) );
+			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_coupon_used' ), 20 );
+			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_shipping_method_used' ), 20 );
+			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_attribute' ), 20 );
+			add_action( 'restrict_manage_posts', array( $this, 'filter_orders_by_category' ), 20 );
 
 			// makes filterable
 			add_filter( 'posts_join',  array( $this, 'add_order_items_join' ) );
@@ -124,7 +125,7 @@ class WC_Advanced_Order_Filters {
 	}
 
 	/**
-	 * Adds the shipping method filtering dropdown to the orders list
+	 * Adds the attribute filtering dropdown to the orders list
 	 *
 	 * @since 1.2.0
 	 */
@@ -143,6 +144,37 @@ class WC_Advanced_Order_Filters {
 
 		?><input type="hidden" name="_attribute_name" value="<?php esc_attr_e( $this->filterableAttribute ); ?>"><?php
         $this->select_html('attribute', $attributes, '_attributes_used', 'slug', 'name');
+	}
+
+	/**
+	 * Adds the category filtering dropdown to the orders list
+	 *
+	 * @since 1.2.0
+	 */
+	public function filter_orders_by_category() {
+		if ( ! $this->is_orders_page()  ) {
+			return;
+		}
+
+		$categories = get_terms( [
+			'taxonomy' => 'product_cat'
+		] );
+
+		if ( empty( $categories ) ) {
+			return;
+		}
+
+		$this->select_html('category', $categories, '_category', 'term_id', 'name');
+
+		$excluded_checked = isset( $_GET['_category_exclude'] ) ? checked( $_GET['_category_exclude'], $_GET['_category_exclude'], false ) : '';
+		?>
+        <label for="_category_exclude" style="float: left; margin: 6px 6px 6px 0">
+            <input type="checkbox" name="_category_exclude" <?php echo $excluded_checked ?> style="height: 16px">
+			<?php
+			printf( esc_html__( 'Exclude category', 'wc-advanced-order-filters' ) );
+			?>
+        </label>
+		<?php
 	}
 
 	/**
@@ -247,8 +279,48 @@ class WC_Advanced_Order_Filters {
 		if ( isset( $_GET['_attributes_used'], $_GET['_attribute_name'] ) && ! empty( $_GET['_attributes_used'] ) && ! empty( $_GET['_attribute_name'] ) ) {
 			$where .= $wpdb->prepare( " AND woim.meta_key='%s' AND woim.meta_value='%s'", wc_clean( $_GET['_attribute_name'] ), wc_clean( $_GET['_attributes_used'] ), );
 		}
-
+		if ( isset( $_GET['_category'] ) && ! empty( $_GET['_category'] ) ) {
+			$operator = 'IN';
+			if ( isset( $_GET['_category_exclude'] ) && $_GET['_category_exclude'] === 'on' ) {
+				$operator = 'NOT IN';
+			}
+			$where .= " AND {$wpdb->posts}.ID $operator ({$this->query_order_products($_GET['_category'])})";
+		}
 		return $where;
+	}
+
+	/**
+	 * Get the orders products that have the given term
+	 *
+	 * @param string $term_taxonomy_id
+	 *
+	 * @return string
+	 *
+	 * @since 1.3.0
+	 */
+	private function query_order_products($term_taxonomy_id = '') {
+		global $wpdb;
+		$posts = $wpdb->posts;
+		$term_relationships = $wpdb->term_relationships;
+		$order_items = $wpdb->prefix . 'woocommerce_order_items';
+		$order_itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+
+		$query = "
+        SELECT woi.order_id
+        FROM        $order_items woi
+        LEFT JOIN   $order_itemmeta woim
+        ON          woi.order_item_id = woim.order_item_id
+        LEFT JOIN   $term_relationships tr
+        ON          tr.object_id = woim.meta_value
+        ";
+		$query .= " WHERE $posts.ID            = woi.order_id";
+		$query .= " AND woi.order_item_type  = 'line_item'";
+		$query .= " AND woim.meta_key        = '_product_id'";
+		if ( !empty($term_taxonomy_id) ) {
+			$query .= $wpdb->prepare(' AND tr.term_taxonomy_id  = %d', wc_clean($term_taxonomy_id));
+		}
+		$query .= ' GROUP BY woi.order_item_id';
+		return $query;
 	}
 
 
