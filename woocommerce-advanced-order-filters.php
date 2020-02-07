@@ -277,7 +277,7 @@ class WC_Advanced_Order_Filters {
 			$where .= $wpdb->prepare( " AND woi.order_item_type='shipping' AND woi.order_item_name='%s'", wc_clean( $_GET['_shipping_method_used'] ) );
 		}
 		if ( isset( $_GET['_attributes_used'], $_GET['_attribute_name'] ) && ! empty( $_GET['_attributes_used'] ) && ! empty( $_GET['_attribute_name'] ) ) {
-			$where .= $wpdb->prepare( " AND woim.meta_key='%s' AND woim.meta_value='%s'", wc_clean( $_GET['_attribute_name'] ), wc_clean( $_GET['_attributes_used'] ), );
+			$where .= $wpdb->prepare( " AND woim.meta_key='%s' AND woim.meta_value='%s'", wc_clean( $_GET['_attribute_name'] ), wc_clean( $_GET['_attributes_used'] ) );
 		}
 		if ( isset( $_GET['_category'] ) && ! empty( $_GET['_category'] ) ) {
 			$operator = 'IN';
